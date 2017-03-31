@@ -6,8 +6,6 @@ rust:
   - nightly-2017-03-29
 env:
   global:
-    # override the default `--features unstable` used for the nightly branch
-    - TRAVIS_CARGO_NIGHTLY_FEATURE=""
     # Version of clippy known to work with pinned nightly.
     - CLIPPY_VERSION=0.0.121
 before_script:

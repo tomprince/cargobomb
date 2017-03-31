@@ -1,9 +1,9 @@
 use errors::*;
+use std::any::Any;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
-use std::path::{Path, PathBuf};
-use std::fs;
-use std::any::Any;
 
 pub fn try_hard<F, R>(f: F) -> Result<R>
     where F: Fn() -> Result<R>
@@ -84,14 +84,13 @@ pub fn copy_dir(src_dir: &Path, dest_dir: &Path) -> Result<()> {
     log!("copying {} to {}", src_dir.display(), dest_dir.display());
 
     if dest_dir.exists() {
-        remove_dir_all(dest_dir)
-            .chain_err(|| "unable to remove test dir")?;
+        remove_dir_all(dest_dir).chain_err(|| "unable to remove test dir")?;
     }
-    fs::create_dir_all(dest_dir)
-        .chain_err(|| "unable to create test dir")?;
+    fs::create_dir_all(dest_dir).chain_err(|| "unable to create test dir")?;
 
     fn is_hidden(entry: &DirEntry) -> bool {
-        entry.file_name()
+        entry
+            .file_name()
             .to_str()
             .map(|s| s.starts_with("."))
             .unwrap_or(false)
@@ -100,9 +99,8 @@ pub fn copy_dir(src_dir: &Path, dest_dir: &Path) -> Result<()> {
     let mut partial_dest_dir = PathBuf::from("./");
     let mut depth = 0;
     for entry in WalkDir::new(src_dir)
-        .into_iter()
-        .filter_entry(|e| !is_hidden(e))
-    {
+            .into_iter()
+            .filter_entry(|e| !is_hidden(e)) {
         let entry = entry.chain_err(|| "walk dir")?;
         while entry.depth() <= depth && depth > 0 {
             assert!(partial_dest_dir.pop());

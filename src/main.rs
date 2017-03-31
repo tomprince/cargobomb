@@ -54,12 +54,12 @@ mod job;
 mod blobject;
 mod home;
 
-use clap::{App, Arg, AppSettings, SubCommand, ArgMatches};
-use errors::*;
-use std::panic;
-use std::env;
-use std::process;
+use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use dirs::*;
+use errors::*;
+use std::env;
+use std::panic;
+use std::process;
 
 fn main() {
     log::init();
@@ -77,7 +77,12 @@ fn main() {
             false
         }
     };
-    log!("{}", if success { "command succeeded" } else { "command failed" });
+    log!("{}",
+         if success {
+             "command succeeded"
+         } else {
+             "command failed"
+         });
     log::finish();
     process::exit(if success { 0 } else { 1 });
 }
@@ -97,7 +102,6 @@ fn cli() -> App<'static, 'static> {
         .setting(AppSettings::VersionlessSubcommands)
         .setting(AppSettings::DeriveDisplayOrder)
         .setting(AppSettings::SubcommandRequiredElseHelp)
-
         .subcommands(model::conv::clap_cmds())
 }
 
@@ -108,4 +112,3 @@ fn run_cmd(m: &ArgMatches) -> Result<()> {
 
     Ok(())
 }
-

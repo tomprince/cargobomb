@@ -1,15 +1,16 @@
-use std::fs;
-use errors::*;
-use registry;
+
 use LIST_DIR;
+use errors::*;
 use file;
-use std::path::{Path, PathBuf};
-use std::collections::{HashMap, HashSet};
 use gh;
+use registry;
+use semver::{Version, VersionReq};
+use std::collections::{HashMap, HashSet};
+use std::fmt::{self, Display, Formatter};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
-use semver::{Version, VersionReq};
-use std::fmt::{self, Formatter, Display};
 
 fn recent_path() -> PathBuf {
     Path::new(LIST_DIR).join("recent-crates.txt")
@@ -35,9 +36,10 @@ pub fn create_recent_list() -> Result<()> {
     fs::create_dir_all(LIST_DIR)?;
 
     let crates = registry::find_registry_crates()?;
-    let crates: Vec<_> = crates.into_iter().map(|mut crate_| {
-        (crate_.name, crate_.versions.pop().expect("").0)
-    }).collect();
+    let crates: Vec<_> = crates
+        .into_iter()
+        .map(|mut crate_| (crate_.name, crate_.versions.pop().expect("").0))
+        .collect();
     write_crate_list(&recent_path(), &crates)?;
     log!("recent crates written to {}", recent_path().display());
     Ok(())
@@ -58,10 +60,13 @@ pub fn create_second_list() -> Result<()> {
     fs::create_dir_all(LIST_DIR)?;
 
     let crates = registry::find_registry_crates()?;
-    let crates: Vec<_> = crates.into_iter().filter_map(|mut crate_| {
-        crate_.versions.pop();
-        crate_.versions.pop().map(move |v| (crate_.name, v.0))
-    }).collect();
+    let crates: Vec<_> = crates
+        .into_iter()
+        .filter_map(|mut crate_| {
+                        crate_.versions.pop();
+                        crate_.versions.pop().map(move |v| (crate_.name, v.0))
+                    })
+        .collect();
     write_crate_list(&second_path(), &crates)?;
     log!("second crates written to {}", second_path().display());
     Ok(())
@@ -74,18 +79,21 @@ pub fn read_second_list() -> Result<Vec<(String, String)>> {
 }
 
 fn write_crate_list(path: &Path, crates: &[(String, String)]) -> Result<()> {
-    let strings = crates.iter()
+    let strings = crates
+        .iter()
         .map(|&(ref name, ref version)| format!("{}:{}", name, version))
         .collect::<Vec<_>>();
     file::write_lines(path, &strings)
 }
 
 fn split_crate_lines(lines: &[String]) -> Result<Vec<(String, String)>> {
-    Ok(lines.iter().filter_map(|line| {
-        line.find(":").map(|i| {
-            (line[..i].to_string(), line[i + 1..].to_string())
-        })
-    }).collect())
+    Ok(lines
+           .iter()
+           .filter_map(|line| {
+                           line.find(":")
+                               .map(|i| (line[..i].to_string(), line[i + 1..].to_string()))
+                       })
+           .collect())
 }
 
 fn pop_path() -> PathBuf {
@@ -123,13 +131,14 @@ pub fn create_pop_list() -> Result<()> {
     let mut crates = crates;
 
     crates.sort_by(|a, b| {
-        let count_a = counts.get(&a.name).cloned().unwrap_or(0);
-        let count_b = counts.get(&b.name).cloned().unwrap_or(0);
-        count_b.cmp(&count_a)
-    });
-    let crates: Vec<_> = crates.into_iter().map(|c| {
-        (c.name.clone(), c.versions.last().expect("").0.clone())
-    }).collect();
+                       let count_a = counts.get(&a.name).cloned().unwrap_or(0);
+                       let count_b = counts.get(&b.name).cloned().unwrap_or(0);
+                       count_b.cmp(&count_a)
+                   });
+    let crates: Vec<_> = crates
+        .into_iter()
+        .map(|c| (c.name.clone(), c.versions.last().expect("").0.clone()))
+        .collect();
     write_crate_list(&pop_path(), &crates)?;
     log!("pop crates written to {}", pop_path().display());
     Ok(())
@@ -154,8 +163,12 @@ pub fn create_hot_list() -> Result<()> {
     for crate_ in &crates {
         let name = &crate_.name;
         let versions = &crate_.versions;
-        let versions: Vec<_> = versions.iter().rev().take(10)
-            .map(|v| (v.0.to_string(), 0)).collect();
+        let versions: Vec<_> = versions
+            .iter()
+            .rev()
+            .take(10)
+            .map(|v| (v.0.to_string(), 0))
+            .collect();
         crate_map.insert(name.to_string(), versions);
     }
 
@@ -175,7 +188,7 @@ pub fn create_hot_list() -> Result<()> {
                                     *count += 1;
                                 }
                             }
-                            _ => ()
+                            _ => (),
                         }
                     }
                 }
@@ -229,14 +242,17 @@ pub fn create_gh_candidate_list() -> Result<()> {
 
     let candidates = gh::get_candidate_repos()?;
     file::write_lines(&gh_candidate_path(), &candidates)?;
-    log!("candidate repos written to {}", gh_candidate_path().display());
+    log!("candidate repos written to {}",
+         gh_candidate_path().display());
     Ok(())
 }
 
 pub fn create_gh_candidate_list_from_cache() -> Result<()> {
     log!("creating gh candidate list from cache");
     fs::create_dir_all(LIST_DIR)?;
-    log!("copying {} to {}", gh_candidate_cache_path().display(), gh_candidate_path().display());
+    log!("copying {} to {}",
+         gh_candidate_cache_path().display(),
+         gh_candidate_path().display());
     fs::copy(&gh_candidate_cache_path(), &gh_candidate_path())?;
     Ok(())
 }
@@ -277,7 +293,9 @@ pub fn create_gh_app_list() -> Result<()> {
 pub fn create_gh_app_list_from_cache() -> Result<()> {
     log!("creating gh app list from cache");
     fs::create_dir_all(LIST_DIR)?;
-    log!("copying {} to {}", gh_app_cache_path().display(), gh_app_path().display());
+    log!("copying {} to {}",
+         gh_app_cache_path().display(),
+         gh_app_path().display());
     fs::copy(&gh_app_cache_path(), &gh_app_path())?;
     Ok(())
 }
@@ -290,7 +308,7 @@ pub fn read_gh_app_list() -> Result<Vec<String>> {
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, Clone)]
 pub enum Crate {
     Version(String, String), // name, vers
-    Repo(String)
+    Repo(String),
 }
 
 impl Display for Crate {
@@ -315,8 +333,8 @@ pub fn read_all_lists() -> Result<Vec<Crate>> {
     } else {
         log!("failed to load recent list. ignoring");
     }
-    if let Ok(second) = second { 
-       //all.extend(second.into_iter().map(|(c, v)| Crate::Version(c, v)));
+    if let Ok(second) = second {
+        //all.extend(second.into_iter().map(|(c, v)| Crate::Version(c, v)));
     } else {
         log!("failed to load second list. ignoring");
     }

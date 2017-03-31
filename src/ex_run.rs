@@ -1,30 +1,34 @@
-use docker;
-use gh_mirrors;
-use std::time::Instant;
-use RUSTUP_HOME;
+
 use CARGO_HOME;
-use std::env;
-use std::fs;
-use errors::*;
 use EXPERIMENT_DIR;
-use std::path::{Path, PathBuf};
+use RUSTUP_HOME;
 use crates;
-use lists::{self, Crate};
-use run;
-use std::collections::{HashMap, HashSet};
-use serde_json;
+use docker;
+use errors::*;
+use ex::*;
 use file;
+use gh_mirrors;
+use lists::{self, Crate};
+use log;
+use model::ExMode;
+use run;
+use serde_json;
+use std::collections::{HashMap, HashSet};
+use std::env;
+use std::fmt::{self, Display, Formatter};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+use toml_frobber;
 use toolchain::{self, Toolchain};
 use util;
-use std::fmt::{self, Formatter, Display};
-use log;
-use toml_frobber;
-use ex::*;
-use model::ExMode;
 
 pub fn result_dir(ex_name: &str, c: &ExCrate, toolchain: &str) -> Result<PathBuf> {
     let tc = toolchain::rustup_toolchain_name(toolchain)?;
-    Ok(ex_dir(ex_name).join("res").join(tc).join(crate_to_dir(c)?))
+    Ok(ex_dir(ex_name)
+           .join("res")
+           .join(tc)
+           .join(crate_to_dir(c)?))
 }
 
 pub fn result_file(ex_name: &str, c: &ExCrate, toolchain: &str) -> Result<PathBuf> {
@@ -93,7 +97,7 @@ fn run_exts(config: &Experiment, tcs: &[Toolchain]) -> Result<()> {
 
     log!("running {} tests", total_crates);
     for (ref c, ref dir) in crates {
-        for tc  in tcs {
+        for tc in tcs {
             let ref tc = toolchain::tc_to_string(tc);
             let r = {
                 let existing_result = get_test_result(ex_name, c, tc)?;
@@ -132,7 +136,7 @@ fn run_exts(config: &Experiment, tcs: &[Toolchain]) -> Result<()> {
                     sum_errors += 1;
                 }
                 Ok(TestResult::BuildFail) => sum_build_fail += 1,
-                Ok(TestResult::TestFail) => sum_test_fail +=1,
+                Ok(TestResult::TestFail) => sum_test_fail += 1,
                 Ok(TestResult::TestPass) => sum_test_pass += 1,
             }
 
@@ -153,11 +157,20 @@ fn run_exts(config: &Experiment, tcs: &[Toolchain]) -> Result<()> {
                 format!("{:0} hours", remaining_time / 60 / 60)
             };
 
-            log!("progress: {} / {}", completed_crates + skipped_crates, total_crates);
+            log!("progress: {} / {}",
+                 completed_crates + skipped_crates,
+                 total_crates);
             log!("{} crates tested in {} s. {:.2} s/crate. {} crates remaining. ~{}",
-                 completed_crates, elapsed, seconds_per_test, remaining_tests, remaining_time_str);
+                 completed_crates,
+                 elapsed,
+                 seconds_per_test,
+                 remaining_tests,
+                 remaining_time_str);
             log!("results: {} build-fail / {} test-fail / {} test-pass / {} errors",
-                 sum_build_fail, sum_test_pass, sum_test_pass, sum_errors);
+                 sum_build_fail,
+                 sum_test_pass,
+                 sum_test_pass,
+                 sum_errors);
         }
     }
 
@@ -167,7 +180,8 @@ fn run_exts(config: &Experiment, tcs: &[Toolchain]) -> Result<()> {
 fn verify_toolchains(config: &Experiment, tcs: &[Toolchain]) -> Result<()> {
     for tc in tcs {
         if !config.toolchains.contains(&tc) {
-            bail!("toolchain {} not in experiment", toolchain::tc_to_string(&tc));
+            bail!("toolchain {} not in experiment",
+                  toolchain::tc_to_string(&tc));
         }
     }
 
@@ -193,20 +207,25 @@ impl TestResult {
             "build-fail" => Ok(TestResult::BuildFail),
             "test-fail" => Ok(TestResult::TestFail),
             "test-pass" => Ok(TestResult::TestPass),
-            _ => Err(format!("bogus test result: {}", s).into())
+            _ => Err(format!("bogus test result: {}", s).into()),
         }
     }
     fn to_string(&self) -> String {
         match *self {
-            TestResult::BuildFail => "build-fail",
-            TestResult::TestFail => "test-fail",
-            TestResult::TestPass => "test-pass",
-        }.to_string()
+                TestResult::BuildFail => "build-fail",
+                TestResult::TestFail => "test-fail",
+                TestResult::TestPass => "test-pass",
+            }
+            .to_string()
     }
 }
 
-fn run_single_test<F>(ex_name: &str, c: &ExCrate, source_path: &Path,
-                      toolchain: &str, f: &F) -> Result<TestResult>
+fn run_single_test<F>(ex_name: &str,
+                      c: &ExCrate,
+                      source_path: &Path,
+                      toolchain: &str,
+                      f: &F)
+                      -> Result<TestResult>
     where F: Fn(&Path, &Path, &str) -> Result<TestResult>
 {
     let result_dir = result_dir(ex_name, c, toolchain)?;
@@ -224,31 +243,44 @@ fn run_single_test<F>(ex_name: &str, c: &ExCrate, source_path: &Path,
     })
 }
 
-fn test_build_and_test(source_path: &Path, target_path: &Path, rustup_tc: &str) -> Result<TestResult> {
+fn test_build_and_test(source_path: &Path,
+                       target_path: &Path,
+                       rustup_tc: &str)
+                       -> Result<TestResult> {
     let tc_arg = &format!("+{}", rustup_tc);
-    let build_r = docker::run(source_path, target_path, &["cargo", tc_arg, "build", "--frozen"]);
+    let build_r = docker::run(source_path,
+                              target_path,
+                              &["cargo", tc_arg, "build", "--frozen"]);
     let mut test_r;
 
     if build_r.is_ok() {
         // First build, with --no-run
-        test_r = Some(docker::run(source_path, target_path, &["cargo", tc_arg, "test", "--frozen", "--no-run"]));
+        test_r = Some(docker::run(source_path,
+                                  target_path,
+                                  &["cargo", tc_arg, "test", "--frozen", "--no-run"]));
         // Then run
-        test_r = test_r.map(|_| docker::run(source_path, target_path, &["cargo", tc_arg, "test", "--frozen"]));
+        test_r = test_r.map(|_| {
+                                docker::run(source_path,
+                                            target_path,
+                                            &["cargo", tc_arg, "test", "--frozen"])
+                            });
     } else {
         test_r = None;
     }
 
     Ok(match (build_r, test_r) {
-        (Err(_), None) => TestResult::BuildFail,
-        (Ok(_), Some(Err(_))) => TestResult::TestFail,
-        (Ok(_), Some(Ok(_))) => TestResult::TestPass,
-        (_, _) => unreachable!()
-    })
+           (Err(_), None) => TestResult::BuildFail,
+           (Ok(_), Some(Err(_))) => TestResult::TestFail,
+           (Ok(_), Some(Ok(_))) => TestResult::TestPass,
+           (_, _) => unreachable!(),
+       })
 }
 
 fn test_build_only(source_path: &Path, target_path: &Path, rustup_tc: &str) -> Result<TestResult> {
     let tc_arg = &format!("+{}", rustup_tc);
-    let r = docker::run(source_path, target_path, &["cargo", tc_arg, "build", "--frozen"]);
+    let r = docker::run(source_path,
+                        target_path,
+                        &["cargo", tc_arg, "build", "--frozen"]);
 
     if r.is_ok() {
         Ok(TestResult::TestPass)
@@ -259,7 +291,9 @@ fn test_build_only(source_path: &Path, target_path: &Path, rustup_tc: &str) -> R
 
 fn test_check_only(source_path: &Path, target_path: &Path, rustup_tc: &str) -> Result<TestResult> {
     let tc_arg = &format!("+{}", rustup_tc);
-    let r = docker::run(source_path, target_path, &["cargo", tc_arg, "check", "--frozen"]);
+    let r = docker::run(source_path,
+                        target_path,
+                        &["cargo", tc_arg, "check", "--frozen"]);
 
     if r.is_ok() {
         Ok(TestResult::TestPass)
@@ -272,7 +306,11 @@ fn record_test_result(ex_name: &str, c: &ExCrate, toolchain: &str, r: TestResult
     let result_dir = result_dir(ex_name, c, toolchain)?;
     fs::create_dir_all(&result_dir)?;
     let result_file = result_file(ex_name, c, toolchain)?;
-    log!("test result! ex: {}, c: {}, tc: {}, r: {}", ex_name, c, toolchain, r);
+    log!("test result! ex: {}, c: {}, tc: {}, r: {}",
+         ex_name,
+         c,
+         toolchain,
+         r);
     log!("file: {}", result_file.display());
     file::write_string(&result_file, &r.to_string())?;
     Ok(())
@@ -282,19 +320,23 @@ pub fn get_test_result(ex_name: &str, c: &ExCrate, toolchain: &str) -> Result<Op
     let result_file = result_file(ex_name, c, toolchain)?;
     if result_file.exists() {
         let s = file::read_string(&result_file)?;
-        let r = TestResult::from_str(&s)
-            .chain_err(|| format!("invalid test result value: '{}'", s))?;
+        let r =
+            TestResult::from_str(&s).chain_err(|| format!("invalid test result value: '{}'", s))?;
         Ok(Some(r))
     } else {
         Ok(None)
     }
 }
 
-fn test_find_unstable_features(source_path: &Path, target_path: &Path, _rustup_tc: &str) -> Result<TestResult> {
+fn test_find_unstable_features(source_path: &Path,
+                               target_path: &Path,
+                               _rustup_tc: &str)
+                               -> Result<TestResult> {
     use walkdir::*;
 
     fn is_hidden(entry: &DirEntry) -> bool {
-        entry.file_name()
+        entry
+            .file_name()
             .to_str()
             .map(|s| s.starts_with("."))
             .unwrap_or(false)
@@ -303,12 +345,19 @@ fn test_find_unstable_features(source_path: &Path, target_path: &Path, _rustup_t
     let mut features = HashSet::new();
 
     for entry in WalkDir::new(source_path)
-        .into_iter()
-        .filter_entry(|e| !is_hidden(e))
-    {
+            .into_iter()
+            .filter_entry(|e| !is_hidden(e)) {
         let entry = entry.chain_err(|| "walk dir")?;
-        if !entry.file_name().to_str().map(|s| s.contains(".rs")).unwrap_or(false) { continue }
-        if !entry.file_type().is_file() { continue }
+        if !entry
+                .file_name()
+                .to_str()
+                .map(|s| s.contains(".rs"))
+                .unwrap_or(false) {
+            continue;
+        }
+        if !entry.file_type().is_file() {
+            continue;
+        }
 
         let new_features = parse_features(entry.path())?;
 
@@ -350,23 +399,19 @@ fn parse_features(path: &Path) -> Result<Vec<String>> {
     }
 
     fn eat_token<'a>(s: Option<&'a str>, tok: &str) -> Option<&'a str> {
-        eat_whitespace(s).and_then(|s| {
-            if s.starts_with(tok) {
-                Some(&s[tok.len()..])
-            } else {
-                None
-            }
-        })
+        eat_whitespace(s).and_then(|s| if s.starts_with(tok) {
+                                       Some(&s[tok.len()..])
+                                   } else {
+                                       None
+                                   })
     }
 
     fn eat_whitespace(s: Option<&str>) -> Option<&str> {
-        s.and_then(|s| {
-            if let Some(i) = s.find(|c: char| !c.is_whitespace()) {
-                Some(&s[i..])
-            } else {
-                None
-            }
-        })
+        s.and_then(|s| if let Some(i) = s.find(|c: char| !c.is_whitespace()) {
+                       Some(&s[i..])
+                   } else {
+                       None
+                   })
     }
 
     fn parse_list(s: Option<&str>, open: &str, close: &str) -> Vec<String> {

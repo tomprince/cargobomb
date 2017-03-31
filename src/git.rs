@@ -1,8 +1,9 @@
-use util;
+
+use errors::*;
 use run;
 use std::fs;
 use std::path::Path;
-use errors::*;
+use util;
 
 pub fn shallow_clone_or_pull(url: &str, dir: &Path) -> Result<()> {
     let ref url = frob_url(url);
@@ -12,7 +13,7 @@ pub fn shallow_clone_or_pull(url: &str, dir: &Path) -> Result<()> {
         let r = run::run("git",
                          &["clone", "--depth", "1", url, &dir.to_string_lossy()],
                          &[])
-            .chain_err(|| format!("unable to clone {}", url));
+                .chain_err(|| format!("unable to clone {}", url));
 
         if r.is_err() {
             if dir.exists() {
@@ -23,11 +24,7 @@ pub fn shallow_clone_or_pull(url: &str, dir: &Path) -> Result<()> {
         r
     } else {
         log!("pulling existing url {} into {}", url, dir.display());
-        run::cd_run(&dir,
-                    "git",
-                    &["pull"],
-                    &[])
-            .chain_err(|| format!("unable to pull {}", url))
+        run::cd_run(&dir, "git", &["pull"], &[]).chain_err(|| format!("unable to pull {}", url))
     }
 }
 
@@ -40,33 +37,27 @@ pub fn shallow_fetch_sha(url: &str, dir: &Path, sha: &str) -> Result<()> {
     log!("ensuring sha {} in {}", sha, url);
     let depths = &[1, 10, 100, 1000];
 
-    let exists = || {
-        if dir.exists() {
-            let r = run::cd_run(dir,
-                                "git",
-                                &["log", sha],
-                                &[]);
-            if r.is_ok() {
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        }
+    let exists = || if dir.exists() {
+        let r = run::cd_run(dir, "git", &["log", sha], &[]);
+        if r.is_ok() { true } else { false }
+    } else {
+        false
     };
 
-    if exists() { return Ok(()) }
+    if exists() {
+        return Ok(());
+    }
 
     for depth in depths {
         util::try_hard(|| {
             run::run("git",
-                     &["clone", "--depth", &format!("{}", depth),
-                       url, &dir.to_string_lossy()],
+                     &["clone", "--depth", &format!("{}", depth), url, &dir.to_string_lossy()],
                      &[])
         }).chain_err(|| format!("unable to clone {}", url))?;
 
-        if exists() { return Ok(()) }
+        if exists() {
+            return Ok(());
+        }
     }
 
     util::try_hard(|| {

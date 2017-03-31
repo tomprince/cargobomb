@@ -1,20 +1,21 @@
-use util;
-use file;
-use errors::*;
+
+use FROB_DIR;
 use crates;
+use errors::*;
+use file;
 use lists::Crate;
 use std::fs;
-use FROB_DIR;
 use std::path::{Path, PathBuf};
 use toml::{Parser, Value};
+use util;
 
 pub fn frob_toml(dir: &Path, name: &str, vers: &str, out: &Path) -> Result<()> {
     log!("frobbing {}-{}", name, vers);
-    let toml_str = file::read_string(&dir.join("Cargo.toml"))
-        .chain_err(|| "no cargo.toml?")?;
+    let toml_str = file::read_string(&dir.join("Cargo.toml")).chain_err(|| "no cargo.toml?")?;
     let mut parser = Parser::new(&toml_str);
-    let mut toml = parser.parse()
-        .ok_or(Error::from(format!("unable to parse Cargo.toml at {}", dir.display())))?;
+    let mut toml =
+        parser.parse()
+            .ok_or(Error::from(format!("unable to parse Cargo.toml at {}", dir.display())))?;
 
     let mut changed = false;
 
@@ -29,18 +30,17 @@ pub fn frob_toml(dir: &Path, name: &str, vers: &str, out: &Path) -> Result<()> {
                     match v {
                         &mut Value::Table(ref mut dep_props) => {
                             if dep_props.contains_key("path") {
-                                log!("removing path from {} in {}-{}",
-                                     dep_name, name, vers);
+                                log!("removing path from {} in {}-{}", dep_name, name, vers);
                             }
                             if dep_props.remove("path").is_some() {
                                 changed = true;
                             }
                         }
-                        _ => ()
+                        _ => (),
                     }
                 }
             }
-            _ => ()
+            _ => (),
         }
     }
 

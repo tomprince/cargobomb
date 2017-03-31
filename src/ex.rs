@@ -1,25 +1,26 @@
-use gh_mirrors;
-use std::time::Instant;
-use RUSTUP_HOME;
+
 use CARGO_HOME;
-use std::env;
-use std::fs;
-use errors::*;
 use EXPERIMENT_DIR;
-use std::path::{Path, PathBuf};
+use RUSTUP_HOME;
+use TEST_SOURCE_DIR;
 use crates;
-use lists::{self, Crate};
-use run;
-use std::collections::{HashMap, HashSet};
-use serde_json;
+use errors::*;
 use file;
+use gh_mirrors;
+use lists::{self, Crate};
+use log;
+use model::{ExCrateSelect, ExMode};
+use run;
+use serde_json;
+use std::collections::{HashMap, HashSet};
+use std::env;
+use std::fmt::{self, Display, Formatter};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+use toml_frobber;
 use toolchain::{self, Toolchain};
 use util;
-use std::fmt::{self, Formatter, Display};
-use log;
-use toml_frobber;
-use TEST_SOURCE_DIR;
-use model::{ExMode, ExCrateSelect};
 
 pub fn ex_dir(ex_name: &str) -> PathBuf {
     Path::new(EXPERIMENT_DIR).join(ex_name)
@@ -30,7 +31,9 @@ fn shafile(ex_name: &str) -> PathBuf {
 }
 
 fn config_file(ex_name: &str) -> PathBuf {
-    Path::new(EXPERIMENT_DIR).join(ex_name).join("config.json")
+    Path::new(EXPERIMENT_DIR)
+        .join(ex_name)
+        .join("config.json")
 }
 
 fn froml_dir(ex_name: &str) -> PathBuf {
@@ -53,7 +56,7 @@ pub struct ExOpts {
     pub name: String,
     pub toolchains: Vec<Toolchain>,
     pub mode: ExMode,
-    pub crates: ExCrateSelect
+    pub crates: ExCrateSelect,
 }
 
 pub fn define(opts: ExOpts) -> Result<()> {
@@ -71,28 +74,28 @@ fn demo_list() -> Result<Vec<Crate>> {
     let demo_crate = "lazy_static";
     let demo_gh_app = "brson/hello-rs";
     let mut found_demo_crate = false;
-    let crates = lists::read_all_lists()?.into_iter().filter(|c| {
-        match *c {
-            Crate::Version(ref c, _) => {
-                if c == demo_crate && !found_demo_crate {
-                    found_demo_crate = true;
-                    true
-                } else {
-                    false
-                }
-            }
-            Crate::Repo(ref r) => {
-                r.contains(demo_gh_app)
-            }
-        }
-    }).collect::<Vec<_>>();
+    let crates = lists::read_all_lists()
+        ?
+        .into_iter()
+        .filter(|c| match *c {
+                    Crate::Version(ref c, _) => {
+                        if c == demo_crate && !found_demo_crate {
+                            found_demo_crate = true;
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    Crate::Repo(ref r) => r.contains(demo_gh_app),
+                })
+        .collect::<Vec<_>>();
     assert!(crates.len() == 2);
 
     Ok(crates)
 }
 
 fn small_random() -> Result<Vec<Crate>> {
-    use rand::{thread_rng, Rng};
+    use rand::{Rng, thread_rng};
 
     const COUNT: usize = 20;
 
@@ -110,16 +113,18 @@ fn top_100() -> Result<Vec<Crate>> {
     let mut crates = lists::read_pop_list()?;
     crates.truncate(100);
 
-    let crates = crates.into_iter().map(|(c, v)| {
-        Crate::Version(c, v)
-    }).collect();
+    let crates = crates
+        .into_iter()
+        .map(|(c, v)| Crate::Version(c, v))
+        .collect();
 
     Ok(crates)
 }
 
-pub fn define_(ex_name: &str, tcs: Vec<Toolchain>,
-               crates: Vec<Crate>, mode: ExMode) -> Result<()> {
-    log!("defining experiment {} for {} crates", ex_name, crates.len());
+pub fn define_(ex_name: &str, tcs: Vec<Toolchain>, crates: Vec<Crate>, mode: ExMode) -> Result<()> {
+    log!("defining experiment {} for {} crates",
+         ex_name,
+         crates.len());
     let ex = Experiment {
         name: ex_name.to_string(),
         crates: crates,
@@ -147,7 +152,7 @@ pub fn fetch_gh_mirrors(ex_name: &str) -> Result<()> {
                     util::report_error(&e);
                 }
             }
-            _ => ()
+            _ => (),
         }
     }
 
@@ -161,10 +166,7 @@ pub fn capture_shas(ex_name: &str) -> Result<()> {
         match krate {
             Crate::Repo(url) => {
                 let dir = gh_mirrors::repo_dir(&url)?;
-                let r = run::run_capture(Some(&dir),
-                                         "git",
-                                         &["log", "-n1", "--pretty=%H"],
-                                         &[]);
+                let r = run::run_capture(Some(&dir), "git", &["log", "-n1", "--pretty=%H"], &[]);
 
                 match r {
                     Ok((stdout, stderr)) => {
@@ -184,7 +186,7 @@ pub fn capture_shas(ex_name: &str) -> Result<()> {
                     }
                 }
             }
-            _ => ()
+            _ => (),
         }
     }
 
@@ -205,14 +207,14 @@ fn load_shas(ex_name: &str) -> Result<HashMap<String, String>> {
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, Clone)]
 pub enum ExCrate {
     Version(String, String), // name, vers
-    Repo(String, String) // url, sha
+    Repo(String, String), // url, sha
 }
 
 impl Display for ExCrate {
     fn fmt(&self, f: &mut Formatter) -> ::std::result::Result<(), fmt::Error> {
         let s = match *self {
             ExCrate::Version(ref n, ref v) => format!("{}-{}", n, v),
-            ExCrate::Repo(ref u, ref s) => format!("{}#{}", u, s)
+            ExCrate::Repo(ref u, ref s) => format!("{}#{}", u, s),
         };
         s.fmt(f)
     }
@@ -234,28 +236,32 @@ fn crate_to_ex_crate(c: Crate, shas: &HashMap<String, String>) -> Result<ExCrate
 fn ex_crate_to_crate(c: ExCrate) -> Result<Crate> {
     match c {
         ExCrate::Version(n, v) => Ok(Crate::Version(n, v)),
-        ExCrate::Repo(u, _) => Ok(Crate::Repo(u))
+        ExCrate::Repo(u, _) => Ok(Crate::Repo(u)),
     }
 }
 
 pub fn ex_crates_and_dirs(ex_name: &str) -> Result<Vec<(ExCrate, PathBuf)>> {
     let config = load_config(ex_name)?;
     let shas = load_shas(ex_name)?;
-    let crates = config.crates.clone().into_iter().filter_map(|c| {
-        let c = crate_to_ex_crate(c, &shas);
-        if let Err(e) = c {
-            util::report_error(&e);
-            return None;
-        }
-        let c = c.expect("");
-        let dir = crates::crate_dir(&c);
-        if let Err(e) = dir {
-            util::report_error(&e);
-            return None;
-        }
-        let dir = dir.expect("");
-        Some((c, dir))
-    });
+    let crates = config
+        .crates
+        .clone()
+        .into_iter()
+        .filter_map(|c| {
+            let c = crate_to_ex_crate(c, &shas);
+            if let Err(e) = c {
+                util::report_error(&e);
+                return None;
+            }
+            let c = c.expect("");
+            let dir = crates::crate_dir(&c);
+            if let Err(e) = dir {
+                util::report_error(&e);
+                return None;
+            }
+            let dir = dir.expect("");
+            Some((c, dir))
+        });
     Ok(crates.collect())
 }
 
@@ -275,7 +281,7 @@ pub fn frob_tomls(ex_name: &str) -> Result<()> {
                     util::report_error(&e);
                 }
             }
-            _ => ()
+            _ => (),
         }
     }
 
@@ -285,15 +291,17 @@ pub fn frob_tomls(ex_name: &str) -> Result<()> {
 pub fn with_frobbed_toml(ex_name: &str, crate_: &ExCrate, path: &Path) -> Result<()> {
     let (crate_name, crate_vers) = match *crate_ {
         ExCrate::Version(ref n, ref v) => (n.to_string(), v.to_string()),
-        _ => return Ok(())
+        _ => return Ok(()),
     };
     let ref src_froml = froml_path(ex_name, &crate_name, &crate_vers);
     let ref dst_froml = path.join("Cargo.toml");
     if src_froml.exists() {
         log!("using frobbed toml {}", src_froml.display());
-        fs::copy(src_froml, dst_froml)
-            .chain_err(|| format!("unable to copy frobbed toml from {} to {}",
-                                  src_froml.display(), dst_froml.display()))?;
+        fs::copy(src_froml, dst_froml).chain_err(|| {
+                           format!("unable to copy frobbed toml from {} to {}",
+                                   src_froml.display(),
+                                   dst_froml.display())
+                       })?;
     }
 
     Ok(())
@@ -320,7 +328,9 @@ pub fn with_work_crate<F, R>(ex_name: &str, toolchain: &str, crate_: &ExCrate, f
 {
     let src_dir = crates::crate_dir(crate_)?;
     let dest_dir = crate_work_dir(ex_name, toolchain);
-    log!("creating temporary build dir for {} in {}", crate_, dest_dir.display());
+    log!("creating temporary build dir for {} in {}",
+         crate_,
+         dest_dir.display());
 
     util::copy_dir(&src_dir, &dest_dir)?;
     let r = f(&dest_dir);
@@ -351,7 +361,8 @@ pub fn capture_lockfiles(ex_name: &str, toolchain: &str, recapture_existing: boo
         let r = with_work_crate(ex_name, toolchain, c, |path| {
             with_frobbed_toml(ex_name, c, path)?;
             capture_lockfile(ex_name, c, path, toolchain)
-        }).chain_err(|| format!("failed to generate lockfile for {}", c));
+        })
+                .chain_err(|| format!("failed to generate lockfile for {}", c));
         if let Err(e) = r {
             util::report_error(&e);
         }
@@ -362,20 +373,22 @@ pub fn capture_lockfiles(ex_name: &str, toolchain: &str, recapture_existing: boo
 
 fn capture_lockfile(ex_name: &str, crate_: &ExCrate, path: &Path, toolchain: &str) -> Result<()> {
     let manifest_path = path.join("Cargo.toml").to_string_lossy().to_string();
-    let args = &["generate-lockfile",
-                 "--manifest-path",
-                 &*manifest_path];
+    let args = &["generate-lockfile", "--manifest-path", &*manifest_path];
     toolchain::run_cargo(toolchain, ex_name, args)
         .chain_err(|| format!("unable to generate lockfile for {}", crate_))?;
 
     let ref src_lockfile = path.join("Cargo.lock");
     let ref dst_lockfile = lockfile(ex_name, crate_)?;
-    fs::copy(src_lockfile, dst_lockfile)
-        .chain_err(|| format!("unable to copy lockfile from {} to {}",
-                              src_lockfile.display(), dst_lockfile.display()))?;
+    fs::copy(src_lockfile, dst_lockfile).chain_err(|| {
+                       format!("unable to copy lockfile from {} to {}",
+                               src_lockfile.display(),
+                               dst_lockfile.display())
+                   })?;
 
-    log!("generated lockfile for {} at {}", crate_, dst_lockfile.display());
-    
+    log!("generated lockfile for {} at {}",
+         crate_,
+         dst_lockfile.display());
+
     Ok(())
 }
 
@@ -387,9 +400,11 @@ pub fn with_captured_lockfile(ex_name: &str, crate_: &ExCrate, path: &Path) -> R
     let ref src_lockfile = lockfile(ex_name, crate_)?;
     if src_lockfile.exists() {
         log!("using lockfile {}", src_lockfile.display());
-        fs::copy(src_lockfile, dst_lockfile)
-            .chain_err(|| format!("unable to copy lockfile from {} to {}",
-                                  src_lockfile.display(), dst_lockfile.display()))?;
+        fs::copy(src_lockfile, dst_lockfile).chain_err(|| {
+                           format!("unable to copy lockfile from {} to {}",
+                                   src_lockfile.display(),
+                                   dst_lockfile.display())
+                       })?;
     }
 
     Ok(())
@@ -403,10 +418,7 @@ pub fn fetch_deps(ex_name: &str, toolchain: &str) -> Result<()> {
             with_captured_lockfile(ex_name, c, path)?;
 
             let manifest_path = path.join("Cargo.toml").to_string_lossy().to_string();
-            let args = &["fetch",
-                         "--locked",
-                         "--manifest-path",
-                         &*manifest_path];
+            let args = &["fetch", "--locked", "--manifest-path", &*manifest_path];
             toolchain::run_cargo(toolchain, ex_name, args)
                 .chain_err(|| format!("unable to fetch deps for {}", c))?;
 
@@ -462,4 +474,3 @@ pub fn delete(ex_name: &str) -> Result<()> {
 
     Ok(())
 }
-

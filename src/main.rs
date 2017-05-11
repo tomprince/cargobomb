@@ -100,7 +100,7 @@ fn cli() -> App<'static, 'static> {
 
 fn run_cmd(m: &ArgMatches) -> Result<()> {
     let cmd = model::conv::clap_args_to_cmd(m)?;
-    cmd.process()?;
+    cmd.run()?;
 
     Ok(())
 }

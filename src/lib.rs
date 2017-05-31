@@ -23,6 +23,7 @@ extern crate toml;
 #[macro_use]
 extern crate scopeguard;
 extern crate libc;
+extern crate nix;
 extern crate winapi;
 extern crate kernel32;
 extern crate reqwest;

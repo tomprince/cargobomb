@@ -3,14 +3,16 @@
 use errors::*;
 use futures::{Future, Stream};
 use futures::stream::MergedItem;
+use libc::{SIGKILL, kill, pid_t};
 use slog_scope;
 use std::io::{self, BufReader};
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::Duration;
 use tokio_core::reactor::Core;
 use tokio_io::io::lines;
-use tokio_process::CommandExt;
+use tokio_process::CommandExt as TokioCommand;
 use tokio_timer;
 
 pub fn run(name: &str, args: &[&str], env: &[(&str, &str)]) -> Result<()> {
@@ -102,13 +104,17 @@ fn log_command_(mut cmd: Command, capture: bool) -> Result<ProcessOutput> {
         .build();
     let mut child = cmd.stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .before_exec(|| {
+                         ::nix::unistd::setsid()?;
+                         Ok(())
+                     })
         .spawn_async(&core.handle())?;
 
     let stdout = child.stdout().take().expect("");
     let stderr = child.stderr().take().expect("");
 
     // Needed for killing after timeout
-    let child_id = child.id();
+    let child_id = child.id() as pid_t;
 
     let heartbeat_timeout = Duration::from_secs(HEARTBEAT_TIMEOUT_SECS);
 
@@ -146,9 +152,8 @@ fn log_command_(mut cmd: Command, capture: bool) -> Result<ProcessOutput> {
     };
 
     #[cfg(unix)]
-    fn kill_process(id: u32) {
-        use libc::{SIGKILL, kill, pid_t};
-        let r = unsafe { kill(id as pid_t, SIGKILL) };
+    fn kill_process(id: pid_t) {
+        let r = unsafe { kill(-id, SIGKILL) };
         if r != 0 {
             // Something went wrong...
         }

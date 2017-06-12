@@ -4,6 +4,8 @@ extern crate crates_index;
 #[macro_use]
 extern crate diesel;
 #[macro_use]
+extern crate diesel_codegen;
+#[macro_use]
 extern crate error_chain;
 extern crate flate2;
 extern crate futures;

@@ -1,15 +1,15 @@
 create table experiments (
   id serial primary key,
-  name varchar not null,
+  name varchar not null unique,
   mode varchar not null
 );
 create table toolchains (
   id serial primary key,
-  description jsonb not null
+  description jsonb not null unique
 );
 create table crates (
   id serial primary key,
-  description jsonb not null
+  description jsonb not null unique
 );
 create table experiment_toolchains (
   experiment_id integer not null references experiments (id),

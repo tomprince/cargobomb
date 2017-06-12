@@ -1,5 +1,7 @@
 // This file can be partially regenerated with `diesel print-schema`
 
+use diesel::prelude::*;
+
 table! {
     experiments (id) {
         id -> Int4,
@@ -28,6 +30,8 @@ table! {
         toolchain_id -> Int4,
     }
 }
+joinable! { experiment_toolchains -> experiments (experiment_id) }
+joinable! { experiment_toolchains -> toolchains (toolchain_id) }
 
 table! {
     experiment_crates (experiment_id, crate_id) {
@@ -35,3 +39,5 @@ table! {
         crate_id -> Int4,
     }
 }
+joinable! { experiment_crates -> experiments (experiment_id) }
+joinable! { experiment_crates -> crates (crate_id) }

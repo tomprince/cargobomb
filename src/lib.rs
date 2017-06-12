@@ -2,6 +2,8 @@
 extern crate chrono;
 extern crate crates_index;
 #[macro_use]
+extern crate diesel;
+#[macro_use]
 extern crate error_chain;
 extern crate flate2;
 extern crate futures;
@@ -50,6 +52,7 @@ pub mod toolchain;
 mod registry;
 pub mod lists;
 mod file;
+mod db;
 mod dl;
 mod gh;
 pub mod util;

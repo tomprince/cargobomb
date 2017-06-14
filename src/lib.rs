@@ -1,5 +1,4 @@
 #![deny(unused_extern_crates)]
-extern crate arc_cell;
 extern crate chrono;
 extern crate crates_index;
 #[macro_use]

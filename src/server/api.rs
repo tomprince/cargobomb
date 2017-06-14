@@ -38,14 +38,13 @@ pub mod post {
 }
 
 pub mod ex_report {
-    use ex;
     use report::{TestResults, generate_report};
     use server::{Data, Params};
 
     #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
-    pub fn handler(_data: &Data, params: Params) -> TestResults {
+    pub fn handler(data: &Data, params: Params) -> TestResults {
         let ex_name = params.find("experiment").unwrap();
-        let ex = ex::Experiment::load(ex_name).unwrap();
+        let ex = data.load_experiment(ex_name).unwrap();
         generate_report(&ex).unwrap()
     }
 }
@@ -55,9 +54,9 @@ pub mod ex_config {
     use server::{Data, Params};
 
     #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
-    pub fn handler(_data: &Data, params: Params) -> ex::Experiment {
+    pub fn handler(data: &Data, params: Params) -> ex::Experiment {
         let ex_name = params.find("experiment").unwrap();
-        ex::Experiment::load(ex_name).unwrap()
+        data.load_experiment(ex_name).unwrap()
     }
 }
 

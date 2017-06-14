@@ -17,18 +17,21 @@ rewrite.
 
 */
 
+use cargobomb::dirs::EXPERIMENT_DIR;
 use cargobomb::docker;
 use cargobomb::errors::*;
 use cargobomb::ex;
 use cargobomb::ex::{ExCrate, ExCrateSelect, ExMode};
 use cargobomb::ex_run;
 use cargobomb::lists;
+use cargobomb::model::FsStore;
 use cargobomb::report;
 use cargobomb::server;
 use cargobomb::toolchain::Toolchain;
 use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 
 // An experiment name
 #[derive(Debug, Clone)]
@@ -201,7 +204,8 @@ impl Cmd for PublishReport {
 
 impl Cmd for Serve {
     fn run(&self) -> Result<()> {
-        server::start(server::Data);
+        let store = Arc::new(FsStore::open(EXPERIMENT_DIR.clone()));
+        server::start(store);
         Ok(())
     }
 }

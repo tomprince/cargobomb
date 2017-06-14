@@ -1,4 +1,3 @@
-use arc_cell::ArcCell;
 use futures::{self, BoxFuture, Future, Stream};
 use futures_cpupool::CpuPool;
 use handlebars::Handlebars;
@@ -6,6 +5,7 @@ use hyper::{self, Get, Post, StatusCode};
 use hyper::header::{ContentLength, ContentType};
 use hyper::server::{Http, Request, Response, Service};
 use mime;
+use model::Model;
 use route_recognizer::{Match, Params, Router};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 mod api;
 
-pub struct Data;
+type Data = Model + Sync + Send;
 
 type Handler = Box<
     Fn(&Server, Request, Params) -> BoxFuture<Response, hyper::Error>
@@ -27,7 +27,7 @@ type Handler = Box<
 >;
 struct Server {
     router: Router<Handler>,
-    data: ArcCell<Data>,
+    data: Arc<Data>,
     pool: CpuPool,
 }
 
@@ -45,8 +45,7 @@ impl Server {
         if *req.method() != Get {
             return self.error(StatusCode::BadRequest);
         };
-        let data = self.data.get();
-        let result = handler(&data, params);
+        let result = handler(&*self.data, params);
         let response = Response::new().with_header(ContentType::json()).with_body(
             serde_json::to_string(&result).unwrap(),
         );
@@ -82,8 +81,7 @@ impl Server {
         if *req.method() != Get {
             return self.error(StatusCode::BadRequest);
         };
-        let data = self.data.get();
-        let context = context_fn(&data, params);
+        let context = context_fn(&*self.data, params);
         // TODO: Precompile templates.
         // TODO: Stream body.
         // TODO: Errors
@@ -116,7 +114,7 @@ impl Server {
             // 10 kB
             return futures::future::err(hyper::Error::TooLarge).boxed();
         }
-        let data = self.data.get();
+        let data = self.data.clone();
         self.pool
             .spawn_fn(move || {
                 req.body()
@@ -139,7 +137,7 @@ impl Server {
                                                               err));
                             }
                         };
-                        let result = handler(body, &data, params);
+                        let result = handler(body, &*data, params);
                         Response::new().with_header(ContentType::json()).with_body(
                             serde_json::to_string(&result).unwrap(),
                         )
@@ -182,7 +180,7 @@ macro_rules! route {
     )
 }
 
-pub fn start(data: Data) {
+pub fn start(data: Arc<Data>) {
     let mut router = Router::<Handler>::new();
     route!(router, "/api/get", handle_get, api::get::handler);
     route!(router, "/api/post", handle_post, api::post::handler);
@@ -223,7 +221,7 @@ pub fn start(data: Data) {
 
     let server = Arc::new(Server {
         router,
-        data: ArcCell::new(Arc::new(data)),
+        data,
         pool: CpuPool::new_num_cpus(),
     });
     let mut server_address: SocketAddr = "0.0.0.0:2346".parse().unwrap();

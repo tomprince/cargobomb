@@ -66,3 +66,4 @@ pub mod docker;
 pub mod dirs;
 mod results;
 pub mod server;
+pub mod model;

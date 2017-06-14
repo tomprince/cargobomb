@@ -5,6 +5,7 @@ use ex_run;
 use file;
 use gh_mirrors;
 use lists::{self, Crate, List};
+use model::Model;
 use run;
 use serde_json;
 use std::collections::HashMap;
@@ -48,10 +49,6 @@ fn registry_dir() -> PathBuf {
 
 fn shafile(ex: &Experiment) -> PathBuf {
     EXPERIMENT_DIR.join(&ex.name).join("shas.json")
-}
-
-fn config_file(ex_name: &str) -> PathBuf {
-    EXPERIMENT_DIR.join(ex_name).join("config.json")
 }
 
 fn froml_dir(ex_name: &str) -> PathBuf {
@@ -133,28 +130,14 @@ fn top_100() -> Result<Vec<Crate>> {
 }
 
 pub fn define_(ex_name: &str, tcs: Vec<Toolchain>, crates: Vec<Crate>, mode: ExMode) -> Result<()> {
-    info!(
-        "defining experiment {} for {} crates",
-        ex_name,
-        crates.len()
-    );
-    let ex = Experiment {
-        name: ex_name.to_string(),
-        crates: crates,
-        toolchains: tcs,
-        mode: mode,
-    };
-    fs::create_dir_all(&ex_dir(&ex.name))?;
-    let json = serde_json::to_string(&ex)?;
-    info!("writing ex config to {}", config_file(ex_name).display());
-    file::write_string(&config_file(ex_name), &json)?;
-    Ok(())
+    let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
+    store.create_experiment(ex_name, tcs, crates, mode)
 }
 
 impl Experiment {
     pub fn load(ex_name: &str) -> Result<Self> {
-        let config = file::read_string(&config_file(ex_name))?;
-        Ok(serde_json::from_str(&config)?)
+        let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
+        store.load_experiment(ex_name)
     }
 
     fn repo_crate_urls(&self) -> Vec<String> {

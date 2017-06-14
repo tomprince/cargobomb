@@ -8,41 +8,41 @@ use ex::Experiment;
 use lists::Crate;
 use model::Model;
 use serde_json;
-use std::env;
+use std::sync::Mutex;
 use toolchain::Toolchain;
 
 pub(crate) mod schema;
 
-pub(crate) fn establish_connection() -> Result<PgConnection> {
-    let database_url = env::var("DATABASE_URL").chain_err(
-        || "DATABASE_URL must be set",
-    )?;
-    PgConnection::establish(&database_url).chain_err(|| "Error connecting to database.")
+pub(crate) fn establish_connection(database_url: &str) -> Result<PgConnection> {
+    PgConnection::establish(database_url).chain_err(|| "Error connecting to database.")
 }
 
 
 pub struct DbStore {
-    conn: PgConnection,
+    conn: Mutex<PgConnection>,
 }
 
 impl DbStore {
-    pub fn open() -> Result<DbStore> {
-        Ok(DbStore { conn: establish_connection()? })
+    pub fn open(database_url: &str) -> Result<DbStore> {
+        Ok(DbStore {
+            conn: Mutex::new(establish_connection(database_url)?),
+        })
     }
 }
 
 impl Model for DbStore {
     fn load_experiment(&self, ex_name: &str) -> Result<Experiment> {
         use db::schema::*;
+        let conn = self.conn.lock().expect("Poisoined lock");
 
         let ex: queries::Experiment = experiments::table
             .filter(experiments::name.eq(ex_name))
-            .get_result(&self.conn)?;
+            .get_result(&*conn)?;
         let tcs = toolchains::table
             .inner_join(experiment_toolchains::table)
             .select(toolchains::description)
             .filter(experiment_toolchains::experiment_id.eq(ex.id))
-            .load(&self.conn)?
+            .load(&*conn)?
             .into_iter()
             .map(|desc| serde_json::from_value(desc).map_err(From::from))
             .collect::<Result<_>>()?;
@@ -50,7 +50,7 @@ impl Model for DbStore {
             .inner_join(experiment_crates::table)
             .select(crates::description)
             .filter(experiment_crates::experiment_id.eq(ex.id))
-            .load(&self.conn)?
+            .load(&*conn)?
             .into_iter()
             .map(|desc| serde_json::from_value(desc).map_err(From::from))
             .collect::<Result<_>>()?;
@@ -75,13 +75,14 @@ impl Model for DbStore {
         );
 
         use db::schema::*;
+        let conn = self.conn.lock().expect("Poisoined lock");
 
         let experiment_id = diesel::insert(&queries::ExperimentInsert {
             name: ex_name.to_string(),
             mode: mode.to_str().to_string(),
         }).into(experiments::table)
             .returning(experiments::id)
-            .get_result::<i32>(&self.conn)?;
+            .get_result::<i32>(&*conn)?;
         let crates = crates
             .into_iter()
             .map(|c| {
@@ -90,13 +91,13 @@ impl Model for DbStore {
             .collect::<Vec<_>>();
         diesel::insert(&crates.on_conflict_do_nothing())
             .into(crates::table)
-            .execute(&self.conn)?;
+            .execute(&*conn)?;
         let crate_ids = crates::table
             .filter(crates::description.eq_any(
                 crates.into_iter().map(|c| c.description),
             ))
             .select(crates::id)
-            .load::<i32>(&self.conn)?;
+            .load::<i32>(&*conn)?;
         diesel::insert(&crate_ids
             .into_iter()
             .map(|crate_id| {
@@ -106,7 +107,7 @@ impl Model for DbStore {
                 }
             })
             .collect::<Vec<_>>()).into(experiment_crates::table)
-            .execute(&self.conn)?;
+            .execute(&*conn)?;
         let tcs = tcs.into_iter()
             .map(|tc| {
                 queries::Toolchain { description: serde_json::to_value(tc).unwrap() }
@@ -114,13 +115,13 @@ impl Model for DbStore {
             .collect::<Vec<_>>();
         diesel::insert(&tcs.on_conflict_do_nothing())
             .into(toolchains::table)
-            .execute(&self.conn)?;
+            .execute(&*conn)?;
         let toolchain_ids = toolchains::table
             .filter(toolchains::description.eq_any(tcs.into_iter().map(
                 |tc| tc.description,
             )))
             .select(toolchains::id)
-            .load::<i32>(&self.conn)?;
+            .load::<i32>(&*conn)?;
         diesel::insert(&toolchain_ids
             .into_iter()
             .map(|toolchain_id| {
@@ -130,7 +131,7 @@ impl Model for DbStore {
                 }
             })
             .collect::<Vec<_>>()).into(experiment_toolchains::table)
-            .execute(&self.conn)?;
+            .execute(&*conn)?;
 
         Ok(())
     }

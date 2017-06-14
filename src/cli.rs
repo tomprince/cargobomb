@@ -17,6 +17,7 @@ rewrite.
 
 */
 
+use cargobomb::db::DbStore;
 use cargobomb::dirs::EXPERIMENT_DIR;
 use cargobomb::docker;
 use cargobomb::errors::*;

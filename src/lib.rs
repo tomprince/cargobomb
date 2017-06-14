@@ -54,7 +54,7 @@ pub mod toolchain;
 mod registry;
 pub mod lists;
 mod file;
-mod db;
+pub mod db;
 mod dl;
 mod gh;
 pub mod util;

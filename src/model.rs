@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use toolchain::Toolchain;
+use util;
 
 pub trait Model {
     fn load_experiment(&self, ex_name: &str) -> Result<Experiment>;
@@ -17,6 +18,8 @@ pub trait Model {
         crates: Vec<Crate>,
         mode: ExMode,
     ) -> Result<()>;
+    fn delete_experiment(&self, ex_name: &str) -> Result<()>;
+
 
     fn write_shas(&self, ex_name: &str, shas: &HashMap<String, String>) -> Result<()>;
     fn read_shas(&self, ex_name: &str) -> Result<HashMap<String, String>>;
@@ -73,6 +76,14 @@ impl Model for FsStore {
             self.config_file(ex_name).display()
         );
         file::write_string(&self.config_file(ex_name), &json)?;
+        Ok(())
+    }
+    fn delete_experiment(&self, ex_name: &str) -> Result<()> {
+        let ex_dir = self.ex_dir(ex_name);
+        if ex_dir.exists() {
+            util::remove_dir_all(&ex_dir)?;
+        }
+
         Ok(())
     }
 

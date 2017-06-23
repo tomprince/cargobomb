@@ -69,14 +69,15 @@ pub struct ExOpts {
 }
 
 pub fn define(opts: ExOpts) -> Result<()> {
-    delete(&opts.name)?;
+    let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
+    store.delete_experiment(&opts.name)?;
     let crates = match opts.crates {
         ExCrateSelect::Full => lists::read_all_lists()?,
         ExCrateSelect::Demo => demo_list()?,
         ExCrateSelect::SmallRandom => small_random()?,
         ExCrateSelect::Top100 => top_100()?,
     };
-    define_(&opts.name, opts.toolchains, crates, opts.mode)
+    store.create_experiment(&opts.name, opts.toolchains, crates, opts.mode)
 }
 
 fn demo_list() -> Result<Vec<Crate>> {
@@ -121,11 +122,6 @@ fn top_100() -> Result<Vec<Crate>> {
     let mut crates = lists::PopList::read()?;
     crates.truncate(100);
     Ok(crates)
-}
-
-pub fn define_(ex_name: &str, tcs: Vec<Toolchain>, crates: Vec<Crate>, mode: ExMode) -> Result<()> {
-    let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
-    store.create_experiment(ex_name, tcs, crates, mode)
 }
 
 impl Experiment {
@@ -512,12 +508,8 @@ pub fn delete_all_target_dirs(ex_name: &str) -> Result<()> {
 }
 
 pub fn delete(ex_name: &str) -> Result<()> {
-    let ex_dir = ex_dir(ex_name);
-    if ex_dir.exists() {
-        util::remove_dir_all(&ex_dir)?;
-    }
-
-    Ok(())
+    let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
+    store.delete_experiment(ex_name)
 }
 
 impl FromStr for ExMode {

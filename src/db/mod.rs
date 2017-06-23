@@ -135,6 +135,28 @@ impl Model for DbStore {
 
         Ok(())
     }
+    fn delete_experiment(&self, ex_name: &str) -> Result<()> {
+        use db::schema::*;
+        let conn = self.conn.lock().expect("Poisoined lock");
+
+        let ex: queries::Experiment = experiments::table
+            .filter(experiments::name.eq(ex_name))
+            .get_result(&*conn)?;
+
+        diesel::delete(experiment_toolchains::table.filter(
+            experiment_toolchains::experiment_id.eq(ex.id),
+        )).execute(&*conn)?;
+
+        diesel::delete(experiment_crates::table.filter(
+            experiment_crates::experiment_id.eq(ex.id),
+        )).execute(&*conn)?;
+
+        diesel::delete(experiments::table.filter(
+            experiments::experiment_id.eq(ex.id),
+        )).execute(&*conn)?;
+
+        Ok(())
+    }
 }
 
 mod queries {

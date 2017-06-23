@@ -530,21 +530,6 @@ fn prepare_all_toolchains(ex: &Experiment) -> Result<()> {
     Ok(())
 }
 
-pub fn copy(ex1_name: &str, ex2_name: &str) -> Result<()> {
-    let ex1_dir = &ex_dir(ex1_name);
-    let ex2_dir = &ex_dir(ex2_name);
-
-    if !ex1_dir.exists() {
-        bail!("experiment {} is not defined", ex1_name);
-    }
-
-    if ex2_dir.exists() {
-        bail!("experiment {} is already defined", ex2_name);
-    }
-
-    util::copy_dir(ex1_dir, ex2_dir)
-}
-
 pub fn delete_all_target_dirs(ex_name: &str) -> Result<()> {
     let target_dir = &toolchain::ex_target_dir(ex_name);
     if target_dir.exists() {

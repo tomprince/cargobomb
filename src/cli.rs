@@ -86,7 +86,6 @@ struct DeleteAllTargetDirs(Ex);
 
 struct CreateLists;
 
-struct CopyEx(Ex, Ex);
 struct DeleteEx(Ex);
 
 struct DeleteAllResults(Ex);
@@ -130,12 +129,6 @@ impl Cmd for PrepareEx {
         ex.prepare_local()?;
 
         Ok(())
-    }
-}
-impl Cmd for CopyEx {
-    fn run(&self) -> Result<()> {
-        let &CopyEx(ref ex1, ref ex2) = self;
-        ex::copy(&ex1.0, &ex2.0)
     }
 }
 impl Cmd for DeleteEx {
@@ -239,8 +232,6 @@ pub mod conv {
     pub fn clap_cmds() -> Vec<App<'static, 'static>> {
         // Types of arguments
         let ex = || opt("ex", "default");
-        let ex1 = || req("ex-1");
-        let ex2 = || req("ex-2");
         let tc1 = || req("tc-1");
         let tc2 = || req("tc-2");
         let mode = || {
@@ -302,9 +293,6 @@ pub mod conv {
                 .arg(mode())
                 .arg(crate_select()),
             PrepareEx::clap(),
-            cmd("copy-ex", "copy all data from one experiment to another")
-                .arg(ex1())
-                .arg(ex2()),
             cmd("delete-ex", "delete shared data for experiment").arg(ex()),
 
             cmd(
@@ -343,14 +331,6 @@ pub mod conv {
             m.value_of("ex").expect("").parse::<Ex>()
         }
 
-        fn ex1(m: &ArgMatches) -> Result<Ex> {
-            m.value_of("ex-1").expect("").parse::<Ex>()
-        }
-
-        fn ex2(m: &ArgMatches) -> Result<Ex> {
-            m.value_of("ex-2").expect("").parse::<Ex>()
-        }
-
         fn tc1(m: &ArgMatches) -> Result<Toolchain> {
             m.value_of("tc-1").expect("").parse()
         }
@@ -385,7 +365,6 @@ pub mod conv {
                 ))
             }
             ("prepare-ex", Some(m)) => Box::new(PrepareEx::from_clap(m.clone())),
-            ("copy-ex", Some(m)) => Box::new(CopyEx(ex1(m)?, ex2(m)?)),
             ("delete-ex", Some(m)) => Box::new(DeleteEx(ex(m)?)),
 
             // Local experiment prep

@@ -2,12 +2,10 @@ use crates;
 use dirs::{CRATES_DIR, EXPERIMENT_DIR, TEST_SOURCE_DIR};
 use errors::*;
 use ex_run;
-use file;
 use gh_mirrors;
 use lists::{self, Crate, List};
 use model::Model;
 use run;
-use serde_json;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::fs;
@@ -45,10 +43,6 @@ fn gh_dir() -> PathBuf {
 
 fn registry_dir() -> PathBuf {
     CRATES_DIR.join("reg")
-}
-
-fn shafile(ex: &Experiment) -> PathBuf {
-    EXPERIMENT_DIR.join(&ex.name).join("shas.json")
 }
 
 fn froml_dir(ex_name: &str) -> PathBuf {
@@ -203,20 +197,15 @@ fn capture_shas(ex: &Experiment) -> Result<()> {
         }
     }
 
-    fs::create_dir_all(&ex_dir(&ex.name))?;
-    let shajson = serde_json::to_string(&shas)?;
-    info!("writing shas to {}", shafile(ex).display());
-    file::write_string(&shafile(ex), &shajson)?;
-
-    Ok(())
+    let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
+    store.write_shas(&ex.name, &shas)
 }
 
 
 impl Experiment {
     pub fn load_shas(&self) -> Result<HashMap<String, String>> {
-        let shas = file::read_string(&shafile(self))?;
-        let shas = serde_json::from_str(&shas)?;
-        Ok(shas)
+        let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
+        store.read_shas(&self.name)
     }
 }
 

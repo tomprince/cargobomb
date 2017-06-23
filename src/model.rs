@@ -3,6 +3,7 @@ use ex::{ExMode, Experiment};
 use file;
 use lists::Crate;
 use serde_json;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use toolchain::Toolchain;
@@ -16,6 +17,9 @@ pub trait Model {
         crates: Vec<Crate>,
         mode: ExMode,
     ) -> Result<()>;
+
+    fn write_shas(&self, ex_name: &str, shas: &HashMap<String, String>) -> Result<()>;
+    fn read_shas(&self, ex_name: &str) -> Result<HashMap<String, String>>;
 }
 
 
@@ -30,6 +34,9 @@ impl FsStore {
 
     fn config_file(&self, ex_name: &str) -> PathBuf {
         self.ex_dir(ex_name).join("config.json")
+    }
+    fn sha_file(&self, ex_name: &str) -> PathBuf {
+        self.ex_dir(ex_name).join("shas.json")
     }
     fn ex_dir(&self, ex_name: &str) -> PathBuf {
         self.root.join(ex_name)
@@ -67,5 +74,22 @@ impl Model for FsStore {
         );
         file::write_string(&self.config_file(ex_name), &json)?;
         Ok(())
+    }
+
+    fn write_shas(&self, ex_name: &str, shas: &HashMap<String, String>) -> Result<()> {
+        if !self.ex_dir(ex_name).exists() {
+            Err(ErrorKind::ExperimentMissing(ex_name.into()))?
+        }
+        let shajson = serde_json::to_string(&shas)?;
+        let sha_file = self.sha_file(ex_name);
+        info!("writing shas to {}", sha_file.display());
+        file::write_string(&sha_file, &shajson)?;
+        Ok(())
+    }
+
+    fn read_shas(&self, ex_name: &str) -> Result<HashMap<String, String>> {
+        let shas = file::read_string(&self.sha_file(ex_name))?;
+        let shas = serde_json::from_str(&shas)?;
+        Ok(shas)
     }
 }

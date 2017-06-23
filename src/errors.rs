@@ -12,6 +12,10 @@ error_chain! {
     }
 
     errors {
+        ExperimentMissing(ex_name: String) {
+            description("The experiment doesn't exist.")
+            display("The experiment `{}` doesn't exist.", ex_name)
+        }
         Timeout(what: &'static str, when: u64) {
             description("the operation timed out")
             display("process killed after {} {}s", what, when)

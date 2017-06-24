@@ -13,9 +13,11 @@ create table crates (
 );
 create table experiment_toolchains (
   experiment_id integer not null references experiments (id),
-  toolchain_id integer not null references toolchains (id)
+  toolchain_id integer not null references toolchains (id),
+  primary key (experiment_id, toolchain_id)
 );
 create table experiment_crates (
   experiment_id integer not null references experiments (id),
-  crate_id integer not null references crates (id)
+  crate_id integer not null references crates (id),
+  primary key (experiment_id, crate_id)
 );

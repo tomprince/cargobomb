@@ -8,6 +8,7 @@ use ex::Experiment;
 use lists::Crate;
 use model::Model;
 use serde_json;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use toolchain::Toolchain;
 
@@ -30,15 +31,20 @@ impl DbStore {
     }
 }
 
+fn get_experiment(conn: &PgConnection, ex_name: &str) -> Result<queries::Experiment> {
+    use db::schema::*;
+    Ok(experiments::table
+        .filter(experiments::name.eq(ex_name))
+        .get_result(conn)?)
+}
+
 impl Model for DbStore {
     fn load_experiment(&self, ex_name: &str) -> Result<Experiment> {
         use db::schema::*;
         let conn = self.conn.lock().expect("Poisoined lock");
 
         conn.transaction(|| {
-            let ex: queries::Experiment = experiments::table
-                .filter(experiments::name.eq(ex_name))
-                .get_result(&*conn)?;
+            let ex = get_experiment(&conn, ex_name)?;
             let tcs = toolchains::table
                 .inner_join(experiment_toolchains::table)
                 .select(toolchains::description)
@@ -161,6 +167,61 @@ impl Model for DbStore {
             Ok(())
         })
     }
+    fn write_shas(&self, ex_name: &str, shas: &HashMap<String, String>) -> Result<()> {
+        use db::schema::*;
+        let conn = self.conn.lock().expect("Poisoined lock");
+
+        conn.transaction(|| {
+            let ex = get_experiment(&conn, ex_name)?;
+
+            let crate_ids = crates::table
+                .filter(crates::description.eq_any(shas.keys().map(|url| {
+                    serde_json::to_value(Crate::Repo { url: url.clone() }).unwrap()
+                })))
+                .select((crates::id, crates::description))
+                .load::<(i32, serde_json::Value)>(&*conn)?;
+
+            for (crate_id, description) in crate_ids {
+                if let Crate::Repo { url } = serde_json::from_value(description)? {
+                    diesel::update(experiment_crates::table.filter(
+                        experiment_crates::crate_id.eq(crate_id).and(
+                            experiment_crates::experiment_id.eq(ex.id),
+                        ),
+                    )).set(&queries::CrateSha { sha: &shas[&url] })
+                        .execute(&*conn)?;
+                }
+            }
+            Ok(())
+        })
+    }
+    fn read_shas(&self, ex_name: &str) -> Result<HashMap<String, String>> {
+        use db::schema::*;
+        let conn = self.conn.lock().expect("Poisoined lock");
+
+        conn.transaction(|| {
+            let ex = get_experiment(&conn, ex_name)?;
+            let crates = crates::table
+                .inner_join(experiment_crates::table)
+                .filter(experiment_crates::experiment_id.eq(ex.id))
+                .select((crates::description, experiment_crates::sha))
+                .load::<(serde_json::Value, Option<String>)>(&*conn)?;
+
+            Ok(
+                crates
+                    .into_iter()
+                    .filter_map(|(desc, sha)| {
+                        serde_json::from_value(desc).ok().and_then(|desc| {
+                            if let Crate::Repo { url } = desc {
+                                sha.map(|sha| (url, sha))
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .collect(),
+            )
+        })
+    }
 }
 
 mod queries {
@@ -198,5 +259,11 @@ mod queries {
     pub struct ExperimentCrate {
         pub experiment_id: i32,
         pub crate_id: i32,
+    }
+
+    #[derive(AsChangeset)]
+    #[table_name = "experiment_crates"]
+    pub struct CrateSha<'a> {
+        pub sha: &'a str,
     }
 }

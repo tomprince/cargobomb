@@ -37,6 +37,7 @@ table! {
     experiment_crates (experiment_id, crate_id) {
         experiment_id -> Int4,
         crate_id -> Int4,
+        sha -> Nullable<Varchar>,
     }
 }
 joinable! { experiment_crates -> experiments (experiment_id) }

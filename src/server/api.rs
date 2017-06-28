@@ -45,7 +45,7 @@ pub mod ex_report {
     pub fn handler(data: &Data, params: Params) -> TestResults {
         let ex_name = params.find("experiment").unwrap();
         let ex = data.load_experiment(ex_name).unwrap();
-        generate_report(&ex).unwrap()
+        generate_report(data, &ex).unwrap()
     }
 }
 

@@ -68,8 +68,7 @@ pub struct ExOpts {
     pub crates: ExCrateSelect,
 }
 
-pub fn define(opts: ExOpts) -> Result<()> {
-    let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
+pub fn define(store: &Model, opts: ExOpts) -> Result<()> {
     store.delete_experiment(&opts.name)?;
     let crates = match opts.crates {
         ExCrateSelect::Full => lists::read_all_lists()?,
@@ -125,8 +124,7 @@ fn top_100() -> Result<Vec<Crate>> {
 }
 
 impl Experiment {
-    pub fn load(ex_name: &str) -> Result<Self> {
-        let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
+    pub fn load(store: &Model, ex_name: &str) -> Result<Self> {
         store.load_experiment(ex_name)
     }
 
@@ -146,27 +144,27 @@ impl Experiment {
         Ok(())
     }
 
-    pub fn prepare_shared(&self) -> Result<()> {
+    pub fn prepare_shared(&self, store: &Model) -> Result<()> {
         self.fetch_repo_crates()?;
-        capture_shas(self)?;
-        download_crates(self)?;
-        frob_tomls(self)?;
-        capture_lockfiles(self, &Toolchain::Dist("stable".into()), false)?;
+        capture_shas(store, self)?;
+        download_crates(self, store)?;
+        frob_tomls(self, store)?;
+        capture_lockfiles(store, self, &Toolchain::Dist("stable".into()), false)?;
         Ok(())
     }
 
-    pub fn prepare_local(&self) -> Result<()> {
+    pub fn prepare_local(&self, store: &Model) -> Result<()> {
         // Local experiment prep
         delete_all_target_dirs(&self.name)?;
-        ex_run::delete_all_results(&self.name)?;
-        fetch_deps(self, &Toolchain::Dist("stable".into()))?;
+        ex_run::delete_all_results(store, &self.name)?;
+        fetch_deps(store, self, &Toolchain::Dist("stable".into()))?;
         prepare_all_toolchains(self)?;
 
         Ok(())
     }
 }
 
-fn capture_shas(ex: &Experiment) -> Result<()> {
+fn capture_shas(store: &Model, ex: &Experiment) -> Result<()> {
     let mut shas: HashMap<String, String> = HashMap::new();
     for krate in &ex.crates {
         if let Crate::Repo { ref url } = *krate {
@@ -193,14 +191,12 @@ fn capture_shas(ex: &Experiment) -> Result<()> {
         }
     }
 
-    let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
     store.write_shas(&ex.name, &shas)
 }
 
 
 impl Experiment {
-    pub fn load_shas(&self) -> Result<HashMap<String, String>> {
-        let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
+    pub fn load_shas(&self, store: &Model) -> Result<HashMap<String, String>> {
         store.read_shas(&self.name)
     }
 }
@@ -267,8 +263,8 @@ impl FromStr for ExCrate {
     }
 }
 
-pub fn ex_crates_and_dirs(ex: &Experiment) -> Result<Vec<(ExCrate, PathBuf)>> {
-    let shas = ex.load_shas()?;
+pub fn ex_crates_and_dirs(ex: &Experiment, store: &Model) -> Result<Vec<(ExCrate, PathBuf)>> {
+    let shas = ex.load_shas(store)?;
     let crates = ex.crates.clone().into_iter().filter_map(|c| {
         let c = c.into_ex_crate(&shas);
         if let Err(e) = c {
@@ -287,12 +283,12 @@ pub fn ex_crates_and_dirs(ex: &Experiment) -> Result<Vec<(ExCrate, PathBuf)>> {
     Ok(crates.collect())
 }
 
-fn download_crates(ex: &Experiment) -> Result<()> {
-    crates::prepare(&ex_crates_and_dirs(ex)?)
+fn download_crates(ex: &Experiment, store: &Model) -> Result<()> {
+    crates::prepare(&ex_crates_and_dirs(ex, store)?)
 }
 
-fn frob_tomls(ex: &Experiment) -> Result<()> {
-    for (krate, dir) in ex_crates_and_dirs(ex)? {
+fn frob_tomls(ex: &Experiment, store: &Model) -> Result<()> {
+    for (krate, dir) in ex_crates_and_dirs(ex, store)? {
         if let ExCrate::Version {
             ref name,
             ref version,
@@ -382,13 +378,14 @@ where
 }
 
 fn capture_lockfiles(
+    store: &Model,
     ex: &Experiment,
     toolchain: &Toolchain,
     recapture_existing: bool,
 ) -> Result<()> {
     fs::create_dir_all(&lockfile_dir(&ex.name))?;
 
-    let crates = ex_crates_and_dirs(ex)?;
+    let crates = ex_crates_and_dirs(ex, store)?;
 
     for (ref c, ref dir) in crates {
         if dir.join("Cargo.lock").exists() {
@@ -467,8 +464,8 @@ pub fn with_captured_lockfile(ex: &Experiment, crate_: &ExCrate, path: &Path) ->
     Ok(())
 }
 
-fn fetch_deps(ex: &Experiment, toolchain: &Toolchain) -> Result<()> {
-    let crates = ex_crates_and_dirs(ex)?;
+fn fetch_deps(store: &Model, ex: &Experiment, toolchain: &Toolchain) -> Result<()> {
+    let crates = ex_crates_and_dirs(ex, store)?;
     for (ref c, _) in crates {
         let r = with_work_crate(ex, toolchain, c, |path| {
             with_frobbed_toml(ex, c, path)?;
@@ -507,8 +504,7 @@ pub fn delete_all_target_dirs(ex_name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn delete(ex_name: &str) -> Result<()> {
-    let store = ::model::FsStore::open(EXPERIMENT_DIR.clone());
+pub fn delete(store: &Model, ex_name: &str) -> Result<()> {
     store.delete_experiment(ex_name)
 }
 

@@ -1,6 +1,7 @@
 use errors::*;
 use ex::*;
 use file;
+use model::Model;
 use ref_slice::ref_slice;
 use results::{CrateResultWriter, ExperimentResultDB, FileDB, TestResult};
 use std::collections::HashSet;
@@ -9,14 +10,19 @@ use std::time::Instant;
 use toolchain::{CargoState, Toolchain};
 use util;
 
-pub fn delete_all_results(ex_name: &str) -> Result<()> {
-    let ex = &Experiment::load(ex_name)?;
+pub fn delete_all_results(store: &Model, ex_name: &str) -> Result<()> {
+    let ex = &Experiment::load(store, ex_name)?;
     let db = FileDB::for_experiment(ex);
     db.delete_all_results()
 }
 
-pub fn delete_result(ex_name: &str, tc: Option<&Toolchain>, crate_: &ExCrate) -> Result<()> {
-    let ex = &Experiment::load(ex_name)?;
+pub fn delete_result(
+    store: &Model,
+    ex_name: &str,
+    tc: Option<&Toolchain>,
+    crate_: &ExCrate,
+) -> Result<()> {
+    let ex = &Experiment::load(store, ex_name)?;
     let db = FileDB::for_experiment(ex);
 
     let tcs = tc.map(ref_slice).unwrap_or(&ex.toolchains);
@@ -28,21 +34,21 @@ pub fn delete_result(ex_name: &str, tc: Option<&Toolchain>, crate_: &ExCrate) ->
     Ok(())
 }
 
-pub fn run_ex_all_tcs(ex_name: &str) -> Result<()> {
-    let config = &Experiment::load(ex_name)?;
-    run_exts(config, &config.toolchains)
+pub fn run_ex_all_tcs(store: &Model, ex_name: &str) -> Result<()> {
+    let config = &Experiment::load(store, ex_name)?;
+    run_exts(store, config, &config.toolchains)
 }
 
-pub fn run_ex(ex_name: &str, tc: Toolchain) -> Result<()> {
-    let config = Experiment::load(ex_name)?;
-    run_exts(&config, &[tc])
+pub fn run_ex(store: &Model, ex_name: &str, tc: Toolchain) -> Result<()> {
+    let config = Experiment::load(store, ex_name)?;
+    run_exts(store, &config, &[tc])
 }
 
-fn run_exts(ex: &Experiment, tcs: &[Toolchain]) -> Result<()> {
+fn run_exts(store: &Model, ex: &Experiment, tcs: &[Toolchain]) -> Result<()> {
     let db = FileDB::for_experiment(ex);
     verify_toolchains(ex, tcs)?;
 
-    let crates = ex_crates_and_dirs(ex)?;
+    let crates = ex_crates_and_dirs(ex, store)?;
 
     // Just for reporting progress
     let total_crates = crates.len() * tcs.len();

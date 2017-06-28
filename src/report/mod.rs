@@ -4,6 +4,7 @@ use file;
 use gh_mirrors;
 use handlebars::Handlebars;
 use mime::{self, Mime};
+use model::Model;
 use results::{CrateResultWriter, ExperimentResultDB, FileDB, TestResult};
 use serde_json;
 use std::{fs, io};
@@ -45,11 +46,11 @@ struct BuildTestResult {
 }
 
 
-pub fn generate_report(ex: &ex::Experiment) -> Result<TestResults> {
+pub fn generate_report(store: &Model, ex: &ex::Experiment) -> Result<TestResults> {
     let db = FileDB::for_experiment(ex);
     assert_eq!(ex.toolchains.len(), 2);
 
-    let res = ex::ex_crates_and_dirs(ex)?
+    let res = ex::ex_crates_and_dirs(ex, store)?
         .into_iter()
         .map(|(krate, _)| {
             // Any errors here will turn into unknown results
@@ -82,9 +83,9 @@ pub fn generate_report(ex: &ex::Experiment) -> Result<TestResults> {
     Ok(TestResults { crates: res })
 }
 
-pub fn write_logs<W: ReportWriter>(ex: &ex::Experiment, dest: &W) -> Result<()> {
+pub fn write_logs<W: ReportWriter>(store: &Model, ex: &ex::Experiment, dest: &W) -> Result<()> {
     let db = FileDB::for_experiment(ex);
-    for (krate, _) in ex::ex_crates_and_dirs(ex)? {
+    for (krate, _) in ex::ex_crates_and_dirs(ex, store)? {
         for tc in &ex.toolchains {
             let writer = db.for_crate(&krate, tc);
             let rel_log = writer.result_path_fragement();
@@ -105,11 +106,11 @@ pub fn write_logs<W: ReportWriter>(ex: &ex::Experiment, dest: &W) -> Result<()> 
 }
 
 
-pub fn gen<W: ReportWriter + Display>(ex_name: &str, dest: &W) -> Result<()> {
-    let ex = ex::Experiment::load(ex_name)?;
+pub fn gen<W: ReportWriter + Display>(store: &Model, ex_name: &str, dest: &W) -> Result<()> {
+    let ex = ex::Experiment::load(store, ex_name)?;
 
-    let res = generate_report(&ex)?;
-    let shas = ex.load_shas()?;
+    let res = generate_report(store, &ex)?;
+    let shas = ex.load_shas(store)?;
 
     info!("writing results to {}", dest);
     dest.write_string(
@@ -129,7 +130,7 @@ pub fn gen<W: ReportWriter + Display>(ex_name: &str, dest: &W) -> Result<()> {
     )?;
 
     write_html_files(dest)?;
-    write_logs(&ex, dest)?;
+    write_logs(store, &ex, dest)?;
 
     Ok(())
 }

@@ -24,7 +24,7 @@ use cargobomb::ex;
 use cargobomb::ex::{ExCrate, ExCrateSelect, ExMode};
 use cargobomb::ex_run;
 use cargobomb::lists;
-use cargobomb::model::FsStore;
+use cargobomb::model::{FsStore, Model};
 use cargobomb::report;
 use cargobomb::server;
 use cargobomb::toolchain::Toolchain;
@@ -117,19 +117,24 @@ impl Cmd for CreateLists {
 impl Cmd for DefineEx {
     fn run(&self) -> Result<()> {
         let &DefineEx(ref ex, ref tc1, ref tc2, ref mode, ref crates) = self;
-        ex::define(ex::ExOpts {
-            name: ex.0.clone(),
-            toolchains: vec![tc1.clone(), tc2.clone()],
-            mode: mode.clone(),
-            crates: crates.clone(),
-        })
+        ex::define(
+            &*get_store()?,
+            ex::ExOpts {
+                name: ex.0.clone(),
+                toolchains: vec![tc1.clone(), tc2.clone()],
+                mode: mode.clone(),
+                crates: crates.clone(),
+            },
+        )
     }
 }
 impl Cmd for PrepareEx {
     fn run(&self) -> Result<()> {
-        let ex = ex::Experiment::load(&self.ex.0)?;
-        ex.prepare_shared()?;
-        ex.prepare_local()?;
+        let store = get_store()?;
+        let store = &*store;
+        let ex = ex::Experiment::load(store, &self.ex.0)?;
+        ex.prepare_shared(store)?;
+        ex.prepare_local(store)?;
 
         Ok(())
     }
@@ -137,7 +142,7 @@ impl Cmd for PrepareEx {
 impl Cmd for DeleteEx {
     fn run(&self) -> Result<()> {
         let &DeleteEx(ref ex) = self;
-        ex::delete(&ex.0)
+        ex::delete(&*get_store()?, &ex.0)
     }
 }
 
@@ -150,26 +155,26 @@ impl Cmd for DeleteAllTargetDirs {
 impl Cmd for DeleteAllResults {
     fn run(&self) -> Result<()> {
         let &DeleteAllResults(ref ex) = self;
-        ex_run::delete_all_results(&ex.0)
+        ex_run::delete_all_results(&*get_store()?, &ex.0)
     }
 }
 
 impl Cmd for DeleteResult {
     fn run(&self) -> Result<()> {
         let &DeleteResult(ref ex, ref tc, ref crate_) = self;
-        ex_run::delete_result(&ex.0, tc.as_ref(), crate_)
+        ex_run::delete_result(&*get_store()?, &ex.0, tc.as_ref(), crate_)
     }
 }
 
 // Experimenting
 impl Cmd for Run {
     fn run(&self) -> Result<()> {
-        ex_run::run_ex_all_tcs(&self.ex.0)
+        ex_run::run_ex_all_tcs(&*get_store()?, &self.ex.0)
     }
 }
 impl Cmd for RunTc {
     fn run(&self) -> Result<()> {
-        ex_run::run_ex(&self.ex.0, self.tc.clone())
+        ex_run::run_ex(&*get_store()?, &self.ex.0, self.tc.clone())
     }
 }
 
@@ -177,6 +182,7 @@ impl Cmd for RunTc {
 impl Cmd for GenReport {
     fn run(&self) -> Result<()> {
         report::gen(
+            &*get_store()?,
             &self.ex.0,
             &report::FileWriter::create(self.dest.0.clone())?,
         )
@@ -198,13 +204,17 @@ impl PublishReport {
 
 impl Cmd for PublishReport {
     fn run(&self) -> Result<()> {
-        report::gen(&self.ex.0, &report::S3Writer::create(self.s3_prefix()?)?)
+        report::gen(
+            &*get_store()?,
+            &self.ex.0,
+            &report::S3Writer::create(self.s3_prefix()?)?,
+        )
     }
 }
 
 impl Cmd for Serve {
     fn run(&self) -> Result<()> {
-        let store = Arc::new(FsStore::open(EXPERIMENT_DIR.clone()));
+        let store = get_store()?;
         server::start(store);
         Ok(())
     }
@@ -222,6 +232,10 @@ where
         })?
         .parse()
         .chain_err(|| format!{"Couldn't parse {:?}.", name})
+}
+
+fn get_store() -> Result<Arc<Model + Send + Sync>> {
+    Ok(Arc::new(FsStore::open(EXPERIMENT_DIR.clone())))
 }
 
 

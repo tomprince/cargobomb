@@ -236,7 +236,10 @@ where
 }
 
 fn get_store() -> Result<Arc<Model + Send + Sync>> {
-    Ok(Arc::new(FsStore::open(EXPERIMENT_DIR.clone())))
+    match get_env::<String>("DATABASE_URL") {
+        Ok(db_url) => Ok(Arc::new(DbStore::open(&db_url)?)),
+        Err(_) => Ok(Arc::new(FsStore::open(EXPERIMENT_DIR.clone()))),
+    }
 }
 
 

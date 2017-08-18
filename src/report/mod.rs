@@ -5,7 +5,7 @@ use gh_mirrors;
 use handlebars::Handlebars;
 use mime::{self, Mime};
 use model::Model;
-use results::{CrateResultWriter, ExperimentResultDB, FileDB, TestResult};
+use results::{TestResult, result_path_fragement};
 use serde_json;
 use std::{fs, io};
 use std::borrow::Cow;
@@ -47,7 +47,6 @@ struct BuildTestResult {
 
 
 pub fn generate_report(store: &Model, ex: &ex::Experiment) -> Result<TestResults> {
-    let db = FileDB::for_experiment(ex);
     assert_eq!(ex.toolchains.len(), 2);
 
     let res = ex::ex_crates_and_dirs(ex, store)?
@@ -55,11 +54,10 @@ pub fn generate_report(store: &Model, ex: &ex::Experiment) -> Result<TestResults
         .map(|(krate, _)| {
             // Any errors here will turn into unknown results
             let crate_results = ex.toolchains.iter().map(|tc| -> Result<BuildTestResult> {
-                let writer = db.for_crate(&krate, tc);
-                let res = writer.load_test_result()?;
+                let res = store.load_test_result(&ex.name, &krate, tc)?;
                 // If there was no test result return an error
                 let res = res.ok_or_else(|| Error::from("no result"))?;
-                let rel_log = writer.result_path_fragement();
+                let rel_log = result_path_fragement(&krate, tc);
 
                 Ok(BuildTestResult {
                     res: res,
@@ -84,13 +82,11 @@ pub fn generate_report(store: &Model, ex: &ex::Experiment) -> Result<TestResults
 }
 
 pub fn write_logs<W: ReportWriter>(store: &Model, ex: &ex::Experiment, dest: &W) -> Result<()> {
-    let db = FileDB::for_experiment(ex);
     for (krate, _) in ex::ex_crates_and_dirs(ex, store)? {
         for tc in &ex.toolchains {
-            let writer = db.for_crate(&krate, tc);
-            let rel_log = writer.result_path_fragement();
+            let rel_log = result_path_fragement(&krate, tc);
 
-            match writer.read_log() {
+            match store.read_test_log(&ex.name, &krate, tc) {
                 Ok(ref mut result_log) => {
                     dest.copy(
                         result_log,

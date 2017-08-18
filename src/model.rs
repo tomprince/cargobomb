@@ -1,7 +1,8 @@
 use errors::*;
-use ex::{ExMode, Experiment};
+use ex::{ExCrate, ExMode, Experiment};
 use file;
 use lists::Crate;
+use results::TestResult;
 use serde_json;
 use std::collections::HashMap;
 use std::fs;
@@ -23,6 +24,34 @@ pub trait Model {
 
     fn write_shas(&self, ex_name: &str, shas: &HashMap<String, String>) -> Result<()>;
     fn read_shas(&self, ex_name: &str) -> Result<HashMap<String, String>>;
+
+    fn load_test_result(
+        &self,
+        ex_name: &str,
+        crate_: &ExCrate,
+        toolchain: &Toolchain,
+    ) -> Result<Option<TestResult>>;
+    fn delete_test_result(
+        &self,
+        ex_name: &str,
+        crate_: &ExCrate,
+        toolchain: &Toolchain,
+    ) -> Result<()>;
+    fn read_test_log(
+        &self,
+        ex_name: &str,
+        crate_: &ExCrate,
+        toolchain: &Toolchain,
+    ) -> Result<fs::File>;
+    fn delete_all_test_results(&self, ex_name: &str) -> Result<()>;
+
+    fn record_test_results(
+        &self,
+        ex_name: &str,
+        crate_: &ExCrate,
+        toolchain: &Toolchain,
+        f: &mut FnMut() -> Result<TestResult>,
+    ) -> Result<TestResult>;
 }
 
 
@@ -43,6 +72,22 @@ impl FsStore {
     }
     fn ex_dir(&self, ex_name: &str) -> PathBuf {
         self.root.join(ex_name)
+    }
+    fn result_file(&self, ex_name: &str, crate_: &ExCrate, tc: &Toolchain) -> PathBuf {
+
+        self.result_dir(ex_name, crate_, tc).join("results.txt")
+    }
+    pub fn result_log(&self, ex_name: &str, crate_: &ExCrate, tc: &Toolchain) -> PathBuf {
+        self.result_dir(ex_name, crate_, tc).join("log.txt")
+    }
+    fn result_dir(&self, ex_name: &str, crate_: &ExCrate, tc: &Toolchain) -> PathBuf {
+        use results::result_path_fragement;
+        self.ex_dir(ex_name).join("res").join(
+            result_path_fragement(
+                crate_,
+                tc,
+            ),
+        )
     }
 }
 
@@ -102,5 +147,75 @@ impl Model for FsStore {
         let shas = file::read_string(&self.sha_file(ex_name))?;
         let shas = serde_json::from_str(&shas)?;
         Ok(shas)
+    }
+
+    fn load_test_result(
+        &self,
+        ex_name: &str,
+        crate_: &ExCrate,
+        toolchain: &Toolchain,
+    ) -> Result<Option<TestResult>> {
+        let result_file = self.result_file(ex_name, crate_, toolchain);
+        if result_file.exists() {
+            let s = file::read_string(&result_file)?;
+            let r = s.parse::<TestResult>().chain_err(|| {
+                format!("invalid test result value: '{}'", s)
+            })?;
+            Ok(Some(r))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn delete_test_result(
+        &self,
+        ex_name: &str,
+        crate_: &ExCrate,
+        toolchain: &Toolchain,
+    ) -> Result<()> {
+        let result_dir = self.result_dir(ex_name, crate_, toolchain);
+        if result_dir.exists() {
+            util::remove_dir_all(&result_dir)?;
+        }
+        Ok(())
+    }
+    fn read_test_log(
+        &self,
+        ex_name: &str,
+        crate_: &ExCrate,
+        toolchain: &Toolchain,
+    ) -> Result<fs::File> {
+        let log_path = self.result_log(ex_name, crate_, toolchain);
+        fs::File::open(log_path).chain_err(|| "Couldn't open result file.")
+    }
+    fn delete_all_test_results(&self, ex_name: &str) -> Result<()> {
+
+        let dir = self.ex_dir(ex_name).join("res");
+        if dir.exists() {
+            util::remove_dir_all(&dir)?;
+        }
+
+        Ok(())
+    }
+
+    fn record_test_results(
+        &self,
+        ex_name: &str,
+        crate_: &ExCrate,
+        toolchain: &Toolchain,
+        f: &mut FnMut() -> Result<TestResult>,
+    ) -> Result<TestResult> {
+        use log;
+        self.delete_test_result(ex_name, crate_, toolchain)?;
+        fs::create_dir_all(&self.result_dir(ex_name, crate_, toolchain))?;
+
+        let log_file = self.result_log(ex_name, crate_, toolchain);
+        let result_file = self.result_file(ex_name, crate_, toolchain);
+
+        let result = log::redirect(&log_file, f)?;
+        file::write_string(&result_file, &result.to_string())?;
+
+        Ok(result)
+
     }
 }

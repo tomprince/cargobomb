@@ -3,7 +3,7 @@ use ex::*;
 use file;
 use model::Model;
 use ref_slice::ref_slice;
-use results::{CrateResultWriter, ExperimentResultDB, FileDB, TestResult};
+use results::TestResult;
 use std::collections::HashSet;
 use std::path::Path;
 use std::time::Instant;
@@ -11,9 +11,7 @@ use toolchain::{CargoState, Toolchain};
 use util;
 
 pub fn delete_all_results(store: &Model, ex_name: &str) -> Result<()> {
-    let ex = &Experiment::load(store, ex_name)?;
-    let db = FileDB::for_experiment(ex);
-    db.delete_all_results()
+    store.delete_all_test_results(ex_name)
 }
 
 pub fn delete_result(
@@ -23,12 +21,10 @@ pub fn delete_result(
     crate_: &ExCrate,
 ) -> Result<()> {
     let ex = &Experiment::load(store, ex_name)?;
-    let db = FileDB::for_experiment(ex);
 
     let tcs = tc.map(ref_slice).unwrap_or(&ex.toolchains);
     for tc in tcs {
-        let writer = db.for_crate(crate_, tc);
-        writer.delete_result()?;
+        store.delete_test_result(ex_name, crate_, tc)?;
     }
 
     Ok(())
@@ -45,7 +41,6 @@ pub fn run_ex(store: &Model, ex_name: &str, tc: Toolchain) -> Result<()> {
 }
 
 fn run_exts(store: &Model, ex: &Experiment, tcs: &[Toolchain]) -> Result<()> {
-    let db = FileDB::for_experiment(ex);
     verify_toolchains(ex, tcs)?;
 
     let crates = ex_crates_and_dirs(ex, store)?;
@@ -73,9 +68,8 @@ fn run_exts(store: &Model, ex: &Experiment, tcs: &[Toolchain]) -> Result<()> {
     info!("running {} tests", total_crates);
     for (ref c, _) in crates {
         for tc in tcs {
-            let writer = db.for_crate(c, tc);
             let r = {
-                let existing_result = writer.load_test_result()?;
+                let existing_result = store.load_test_result(&ex.name, c, tc)?;
                 if let Some(r) = existing_result {
                     skipped_crates += 1;
 
@@ -95,7 +89,9 @@ fn run_exts(store: &Model, ex: &Experiment, tcs: &[Toolchain]) -> Result<()> {
                         with_frobbed_toml(ex, c, source_path)?;
                         with_captured_lockfile(ex, c, source_path)?;
 
-                        writer.record_results(|| {
+
+
+                        store.record_test_results(&ex.name, c, tc, &mut || {
                             info!("testing {} against {} for {}", c, tc.to_string(), ex.name);
                             test_fn(ex, source_path, tc)
                         })

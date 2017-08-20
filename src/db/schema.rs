@@ -42,3 +42,16 @@ table! {
 }
 joinable! { experiment_crates -> experiments (experiment_id) }
 joinable! { experiment_crates -> crates (crate_id) }
+
+table! {
+    experiment_results (experiment_id, crate_id, toolchain_id) {
+        experiment_id -> Int4,
+        crate_id -> Int4,
+        toolchain_id -> Int4,
+        result -> Varchar,
+        log_url -> Varchar,
+    }
+}
+joinable! { experiment_results -> experiments (experiment_id) }
+joinable! { experiment_results -> crates (crate_id) }
+joinable! { experiment_results -> toolchains (toolchain_id) }

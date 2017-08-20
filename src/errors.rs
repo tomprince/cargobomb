@@ -1,3 +1,4 @@
+#![allow(unused_doc_comment)]
 error_chain! {
     foreign_links {
         IoError(::std::io::Error);
